@@ -18,7 +18,7 @@ Downloading the data from Dropbox will take several minutes. The size of the dow
 
 The MATLAB folder contains two scripts:
 - `compare_polygenicities.m` reproduces Figure 1 of the paper.
-- `estimate_polygenicity.m` reproduces Figure 2 of the paper.
+- `estimate_polygenicity.m` reproduces Figure 3 of the paper.
 
 The function which estimates polygenicity from FMR estimates is provided in `FMR` repository. This function in its entirety is:
 
