@@ -20,6 +20,8 @@ The MATLAB folder contains two scripts:
 - `compare_polygenicities.m` reproduces Figure 1 of the paper.
 - `estimate_polygenicity.m` reproduces Figure 3 of the paper.
 
+A subdirectory MATLAB/as-is contains a simulation script which was used to produce Figure 2 of the paper. This script is provided as-is; reproducing results yourself will require multiple steps of installation and manual path manipulation.
+
 The function which estimates polygenicity from FMR estimates is provided in `FMR` repository. This function in its entirety is:
 
 ```matlab
