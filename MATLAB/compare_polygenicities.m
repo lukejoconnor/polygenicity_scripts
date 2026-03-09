@@ -33,13 +33,13 @@ h = plot(n_small_array, poly);
 labels = {'{\it P_G} (entropy)',...
     '{\it P_H} (effective)',...
     '{\it P_M} (softmax)',...
-    '{\it P_A} (nonzero effects)'};
+    '{\it P_A} (nonzero contributions)'};
 order = [4,1,2,3];
 legend(h(order),labels(order))
 legend boxoff
 set(gca,'yscale','log','xscale','log')
 set(gca,'ytick',[10, 100,1000])
-xlabel('Number of small effects (n_s)')
+xlabel('Number of small contributions (n_s)')
 ylabel('Polygenicity')
 ylim([10 5000])
 title('A')
@@ -68,7 +68,7 @@ subplot(1,4,3)
 plot(fraction_small, poly)
 set(gca,'yscale','log')
 set(gca,'ytick',[10, 100,1000])
-xlabel('Contribution of small effects (n_sp_s / (n_sp_s + n_lp_l))')
+xlabel('Sum of small contributions (n_sp_s / (n_sp_s + n_lp_l))')
 ylabel('Polygenicity')
 ylim([10 5000])
 title('B')
@@ -92,7 +92,7 @@ subplot(1,4,4)
 plot(ratio_small', poly)
 set(gca,'yscale','log','xscale','linear')
 set(gca,'ytick',[10, 100, 1000])
-xlabel('Contribution per small effect (p_s/p_l)')
+xlabel('Contribution size ratio (p_s/p_l)')
 ylabel('Polygenicity')
 ylim([10 5000])
 title('C')
