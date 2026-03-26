@@ -119,7 +119,7 @@ set(gca,'XTick',1:nt,'XTickLabel',abbrevs(order))
 set(gca,'YTick',0:5,'YTickLabel',{'1','10','100','1000','10^4','10^5'})
 ylim([0 5])
 view(90,-90)
-labels = {'\Pi_G (entropy)', '\Pi_H (effective)', '\Pi_G (softmax)'};
+labels = {'{\it P_G} (entropy)', '{\it P_H} (effective)', '{\it P_M} (softmax)'};
 legend(h, labels)
 legend boxoff
 ylabel('Polygenicity (SE)')
