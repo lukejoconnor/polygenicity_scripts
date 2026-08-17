@@ -11,7 +11,7 @@ table_save_path = '../polygenicity_estimates.txt';
 % Load data
 FMR1 = load([matfiles_path, 'FMRestimates_32traits.mat'],...
     'ss_est','ww_jk','LD4Mout','mm','traits',...
-    'h2gs_obs','warningflag','numgs_obs');
+    'h2gs_obs','warningflag','numgs_obs','Neff');
 
 FMR2 = load([matfiles_path, 'FMR_lipids.mat'],...
     'ss_est','ww_jk','LD4Mout','mm','traits',...
@@ -31,6 +31,17 @@ incl = [1:3 5]; % new traits: exclude skin color, which is very noisy
 ss_est = [FMR1.ss_est; FMR2.ss_est(incl,:)];
 ww_jk = [FMR1.ww_jk; FMR2.ww_jk(incl,:,:)];
 LD4Mout = [FMR1.LD4Mout'; FMR2.LD4Mout(incl)'];
+% FMR_lipids.mat predates saving Neff. Map the Table S1 values by trait name
+% so that a change in file row order cannot silently misassign them.
+lipid_neff = containers.Map(...
+    {'Triglycerides','LDL','HbA1c','Hair color'}, ...
+    [431952, 434347, 411840, 452720]);
+lipid_traits = FMR2.traits(incl);
+lipid_neff_values = zeros(1, length(lipid_traits));
+for ii = 1:length(lipid_traits)
+    lipid_neff_values(ii) = lipid_neff(lipid_traits{ii});
+end
+Neff = [FMR1.Neff, lipid_neff_values];
 h2gs_obs = [FMR1.h2gs_obs; FMR2.h2gs_obs(incl,:)];
 numgs_obs = [FMR1.numgs_obs; FMR2.numgs_obs(incl,:)];
 nt = length(traits);
@@ -38,21 +49,21 @@ clear FMR1 FMR2 sumstats
 
 %% Estimate polygenicity
 
-% Polygenicity functions
-logsumexp = @(a,b)max(a,b) + log(1+exp(-abs(b-a)));
-logdifexp= @(a,b)a + log(1-exp(b-a));
-poly_functions = {@log, @(x)x, @(x)max(1e-256,exp(-1./x))};
-inverse_functions = {@exp, @(x)x, @(x)-1./log(x)};
+% Equation 15 generators act on component polygenicity 1/sigma_k^2.
+poly_measures = {'entropy', 'effective', 'softmax'};
 
 % Estimates
-poly_jk = zeros(100,length(poly_functions));
+poly_jk = zeros(100,length(poly_measures));
 for tt=1:nt
     disp(traits{tt})
-    ww = reshape(ww_jk(tt,:,:),13,100)';
+    omega = reshape(ww_jk(tt,:,:),13,100)';
     Nh2 = mm * mean(LD4Mout(tt).cov);
-    
-    for ii = 1:length(poly_functions)
-        poly_jk(:,ii) = compute_polygenicity(ss_est(tt,:)/Nh2,ww,poly_functions{ii},inverse_functions{ii});
+    h2_hat = Nh2 / Neff(tt);
+    sigma2 = ss_est(tt,:) / Neff(tt);
+
+    for ii = 1:length(poly_measures)
+        poly_jk(:,ii) = compute_polygenicity(...
+            sigma2, omega, h2_hat, poly_measures{ii});
     end
 
     poly_est(tt,:) = mean(log10(poly_jk));
@@ -164,4 +175,3 @@ T = table(traits, entropy_polygenicity, entropy_polygenicity_se,...
     target_size_simons, target_size_simons_lb, target_size_simons_ub);
 
 writetable(T, table_save_path)
-
