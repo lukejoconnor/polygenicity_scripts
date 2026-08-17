@@ -43,11 +43,15 @@ end
 h2 = h2_or_f;
 measure = measure_or_finv;
 
-if isvector(sigma2)
-    sigma2 = reshape(sigma2, 1, []);
-end
-if isvector(omega)
+if isvector(omega) && size(omega, 1) == 1
     omega = reshape(omega, 1, []);
+end
+if isvector(sigma2)
+    if size(omega, 2) == 1 && numel(sigma2) == size(omega, 1)
+        sigma2 = reshape(sigma2, [], 1);
+    else
+        sigma2 = reshape(sigma2, 1, []);
+    end
 end
 if size(sigma2, 2) ~= size(omega, 2)
     error('sigma2 and omega must have the same number of columns.');
@@ -85,10 +89,13 @@ end
 
 switch lower(char(measure))
     case 'entropy'
-        mean_f = sum(omega .* log(1 ./ sigma2), 2);
-        Pi = h2 .* exp(mean_f);
+        log_pi = log(h2) - sum(omega .* log(sigma2), 2);
+        Pi = exp(log_pi);
     case 'effective'
-        mean_f = sum(omega .* sigma2, 2);
+        active_sigma2 = sigma2;
+        active_sigma2(omega == 0) = 0;
+        row_scale = max(active_sigma2, [], 2);
+        mean_f = row_scale .* sum(omega .* (active_sigma2 ./ row_scale), 2);
         Pi = h2 ./ mean_f;
     case 'softmax'
         % Stable evaluation of -h2*log(sum omega*exp(-1/sigma2)).
@@ -100,6 +107,20 @@ switch lower(char(measure))
         log_mean_f(finite_rows) = row_max(finite_rows) + log(sum(exp(...
             log_terms(finite_rows,:) - row_max(finite_rows)), 2));
         Pi = -h2 .* log_mean_f;
+        % If every positive-weight reciprocal overflows, the largest sigma2
+        % component dominates exactly at floating-point precision. Evaluate
+        % its leading term as h2/sigma2 to avoid the indeterminate h2*Inf.
+        overflow_rows = ~finite_rows;
+        if any(overflow_rows)
+            active_sigma2 = sigma2(overflow_rows,:);
+            active_omega = omega(overflow_rows,:);
+            active_sigma2(active_omega == 0) = 0;
+            sigma2_max = max(active_sigma2, [], 2);
+            dominant_weight = sum(active_omega .* ...
+                (active_sigma2 == sigma2_max), 2);
+            Pi(overflow_rows) = h2(overflow_rows) ./ sigma2_max - ...
+                h2(overflow_rows) .* log(dominant_weight);
+        end
     otherwise
         error('Unknown measure: %s', measure);
 end
