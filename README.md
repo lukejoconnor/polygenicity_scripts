@@ -22,36 +22,19 @@ The MATLAB folder contains two scripts:
 
 A subdirectory MATLAB/as-is contains a simulation script which was used to produce Figure 2 of the paper. This script is provided as-is; reproducing results yourself will require multiple steps of installation and manual path manipulation.
 
-The function which estimates polygenicity from FMR estimates is provided in `FMR` repository. This function in its entirety is:
+The Figure 3 analysis uses `MATLAB/helpers/compute_polygenicity.m` to evaluate
+Equation 15 directly. Its primary interface is:
 
 ```matlab
-function Pi = compute_polygenicity(x,w,f,finv)
-%compute_polygenicity evaluates the function
-% Pi_f(x,w) = h^2 / f^-1 (1/h^2 w_1*f(x_1)+...+w_k*f(x_k))
-% where h^2 = w_1+...+w_k and f:(0,infty)->(0,infty) is a continuous
-% function with inverse finv.
-%   For example:
-%   \Pi_{entropy}: f = @log and finv=@exp
-%   \Pi_{effective}: f=@(x)x and finv=f
-%   \Pi_{softmax}: f=@(x)exp(-1./x) and finv=@(x)-1./log(x)
-%   \Pi_{softmax} alternative implementation that avoids overflow issues:
-%       f=@(x)exp(1/max(x(:)) - 1./x) and finv=@(y,xmax)-1./(-1/xmax + log(y))
-%   \Pi_0 [not recommended]: f=@inv and finv=@inv
-% 
-% Can be applied to matrix-valued x and w (e.g., the jackknife output of FMR),
-% in which case it computes polygenicity for each row of the matrix.
-
-h2 = sum(w,2);
-w = w./h2;
-y = sum(w .* f(x),2);
-if nargin(finv) == 1
-    Pi = h2 ./ finv(y);
-else
-    % To avoid overflow issues
-    Pi = h2 ./ finv(y, max(x(:)));
-end
-end
+Pi = compute_polygenicity(sigma2, omega, h2, measure)
 ```
+
+Here `sigma2` contains the unnormalized FMR component variances in phenotypic-
+variance units, each row of `omega` contains component heritability fractions
+that sum to one, and `measure` is `entropy`, `effective`, or `softmax`. The
+helper retains backward compatibility with the previous `(x,w,f,finv)`
+interface. See the function documentation and `analysis/README.md` for the
+equation, numerical-stability details, and verification commands.
 
 ## Links and citations
 - O'Connor & Sella preprint: https://www.biorxiv.org/content/10.1101/2025.07.10.664154v1

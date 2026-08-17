@@ -1,26 +1,127 @@
-function Pi = compute_polygenicity(x,w,f,finv)
-%compute_polygenicity evaluates the function
-% Pi_f(x,w) = h^2 / f^-1 (1/h^2 w_1*f(x_1)+...+w_k*f(x_k))
-% where h^2 = w_1+...+w_k and f:(0,infty)->(0,infty) is a continuous
-% function with inverse finv.
-%   For example:
-%   \Pi_{entropy}: f = @log and finv=@exp
-%   \Pi_{effective}: f=@(x)x and finv=f
-%   \Pi_{softmax}: f=@(x)exp(-1./x) and finv=@(x)-1./log(x)
-%   \Pi_{softmax} alternative implementation that avoids overflow issues:
-%       f=@(x)exp(1/max(x(:)) - 1./x) and finv=@(y,xmax)-1./(-1/xmax + log(y))
-%   \Pi_0 [not recommended]: f=@inv and finv=@inv
-% 
-% Can be applied to matrix-valued x and w (e.g., the jackknife output of FMR),
-% in which case it computes polygenicity for each row of the matrix.
+function Pi = compute_polygenicity(sigma2, omega, h2_or_f, measure_or_finv)
+%COMPUTE_POLYGENICITY Evaluate Equation 15 of O'Connor & Sella.
+%
+%   Pi = compute_polygenicity(sigma2, omega, h2, measure)
+%
+%   Pi = h2 * f^-1(sum_k omega_k * f(1/sigma2_k)),
+%
+% where:
+%   sigma2(k) is the FMR component variance sigma_k^2 in phenotypic-
+%       variance units (not divided by h2);
+%   omega(:,k) is the normalized fraction of heritability assigned to
+%       component k, with sum_k omega(:,k) = 1; and
+%   h2 is total SNP heritability.  Thus the absolute heritability weights
+%       in Equation 15 are w(:,k) = h2 .* omega(:,k).
+%
+% measure selects the generator f that acts on component polygenicity
+% 1/sigma_k^2:
+%   'entropy':   f(u) = log(u),       f^-1(y) = exp(y)
+%   'effective': f(u) = 1/u,         f^-1(y) = 1/y
+%   'softmax':   f(u) = exp(-u),     f^-1(y) = -log(y)
+%
+% omega may contain one row per jackknife replicate. sigma2 may be a row
+% vector shared across replicates or a matrix of the same size as omega.
+%
+% Backward compatibility: calls using the previous
+% compute_polygenicity(x,w,f,finv) interface retain their original behavior.
 
-h2 = sum(w,2);
-w = w./h2;
-y = sum(w .* f(x),2);
-if nargin(finv) == 1
-    Pi = h2 ./ finv(y);
-else
-    % To avoid overflow issues
-    Pi = h2 ./ finv(y, max(x(:)));
+if isa(h2_or_f, 'function_handle') && ...
+        isa(measure_or_finv, 'function_handle')
+    f = h2_or_f;
+    finv = measure_or_finv;
+    weight_sum = sum(omega, 2);
+    normalized_weights = omega ./ weight_sum;
+    mean_f = sum(normalized_weights .* f(sigma2), 2);
+    if nargin(finv) == 1
+        Pi = weight_sum ./ finv(mean_f);
+    else
+        Pi = weight_sum ./ finv(mean_f, max(sigma2(:)));
+    end
+    return
+end
+
+h2 = h2_or_f;
+measure = measure_or_finv;
+
+if isvector(omega) && size(omega, 1) == 1
+    omega = reshape(omega, 1, []);
+end
+if isvector(sigma2)
+    if size(omega, 2) == 1 && numel(sigma2) == size(omega, 1)
+        sigma2 = reshape(sigma2, [], 1);
+    else
+        sigma2 = reshape(sigma2, 1, []);
+    end
+end
+if size(sigma2, 2) ~= size(omega, 2)
+    error('sigma2 and omega must have the same number of columns.');
+end
+if size(sigma2, 1) == 1 && size(omega, 1) > 1
+    sigma2 = repmat(sigma2, size(omega, 1), 1);
+elseif size(sigma2, 1) ~= size(omega, 1)
+    error(['sigma2 must have one row or the same number of rows as ' ...
+        'omega.']);
+end
+if any(~isfinite(sigma2(:)) | sigma2(:) <= 0)
+    error('sigma2 must contain positive finite values.');
+end
+if any(~isfinite(omega(:)) | omega(:) < 0)
+    error('omega must contain nonnegative finite values.');
+end
+
+omega_sum = sum(omega, 2);
+if any(abs(omega_sum - 1) > 1e-10)
+    error('Each row of omega must sum to one.');
+end
+omega = omega ./ omega_sum;
+h2 = h2(:);
+if isscalar(h2)
+    h2 = repmat(h2, size(omega, 1), 1);
+elseif length(h2) ~= size(omega, 1)
+    error('h2 must be scalar or have one value per row of omega.');
+end
+if any(~isfinite(h2) | h2 <= 0)
+    error('h2 must contain positive finite values.');
+end
+if ~(ischar(measure) || (isstring(measure) && isscalar(measure)))
+    error('measure must be entropy, effective, or softmax.');
+end
+
+switch lower(char(measure))
+    case 'entropy'
+        log_pi = log(h2) - sum(omega .* log(sigma2), 2);
+        Pi = exp(log_pi);
+    case 'effective'
+        active_sigma2 = sigma2;
+        active_sigma2(omega == 0) = 0;
+        row_scale = max(active_sigma2, [], 2);
+        mean_f = row_scale .* sum(omega .* (active_sigma2 ./ row_scale), 2);
+        Pi = h2 ./ mean_f;
+    case 'softmax'
+        % Stable evaluation of -h2*log(sum omega*exp(-1/sigma2)).
+        % Direct exponentiation underflows for the FMR component scales.
+        log_terms = log(omega) - 1 ./ sigma2;
+        row_max = max(log_terms, [], 2);
+        log_mean_f = -inf(size(row_max));
+        finite_rows = isfinite(row_max);
+        log_mean_f(finite_rows) = row_max(finite_rows) + log(sum(exp(...
+            log_terms(finite_rows,:) - row_max(finite_rows)), 2));
+        Pi = -h2 .* log_mean_f;
+        % If every positive-weight reciprocal overflows, the largest sigma2
+        % component dominates exactly at floating-point precision. Evaluate
+        % its leading term as h2/sigma2 to avoid the indeterminate h2*Inf.
+        overflow_rows = ~finite_rows;
+        if any(overflow_rows)
+            active_sigma2 = sigma2(overflow_rows,:);
+            active_omega = omega(overflow_rows,:);
+            active_sigma2(active_omega == 0) = 0;
+            sigma2_max = max(active_sigma2, [], 2);
+            dominant_weight = sum(active_omega .* ...
+                (active_sigma2 == sigma2_max), 2);
+            Pi(overflow_rows) = h2(overflow_rows) ./ sigma2_max - ...
+                h2(overflow_rows) .* log(dominant_weight);
+        end
+    otherwise
+        error('Unknown measure: %s', measure);
 end
 end
